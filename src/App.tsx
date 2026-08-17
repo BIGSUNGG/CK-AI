@@ -86,10 +86,10 @@ export default function App() {
 	const animatingRef = useRef(false);
 	const reduceMotion = useReducedMotion();
 
-	// 드래그 진행률 0~1 → 플립 각도·그림자
+	// 드래그 진행률 0~1 → 플립 각도·그림자 (우→좌 책장 넘김: 왼쪽 책등 축 회전)
 	const p = useMotionValue(0);
-	const rotFwd = useTransform(p, [0, 1], [0, 180]);
-	const rotBwd = useTransform(p, [0, 1], [180, 0]);
+	const rotFwd = useTransform(p, [0, 1], [0, -180]);
+	const rotBwd = useTransform(p, [0, 1], [-180, 0]);
 	const shadeFwd = useTransform(p, [0, 1], [0, 0.6]);
 	const shadeBwd = useTransform(p, [0, 1], [0.6, 0]);
 
@@ -249,8 +249,8 @@ export default function App() {
 				<motion.div
 					className="slot flip"
 					style={{
-						rotateX: phase === "forward" ? rotFwd : rotBwd,
-						transformOrigin: "top",
+						rotateY: phase === "forward" ? rotFwd : rotBwd,
+						transformOrigin: "left",
 						backfaceVisibility: "hidden",
 					}}
 				>
