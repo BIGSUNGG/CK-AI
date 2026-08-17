@@ -44,7 +44,7 @@ npx serve .
 
 ## 구조
 
-```
+```text
 index.html          뷰어 마크업
 style.css           세로 스테이지·플립 레이어·HUD 스타일
 app.js              페이지 시퀀스·드래그 플립·영상 재생 로직

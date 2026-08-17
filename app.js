@@ -152,7 +152,9 @@ function applyDrag(dy) {
 
 function finishFlip(commit) {
   const dir = drag.dir;
-  const target = commit ? (dir > 0 ? 180 : 0) : (dir > 0 ? 0 : 180);
+  let target;
+  if (dir > 0) target = commit ? 180 : 0;
+  else target = commit ? 0 : 180;
   setFlipAngle(target, true);
   let finished = false;
   const done = () => {
