@@ -1,7 +1,7 @@
 # 만화 뷰어 기획서 (SPEC)
 
 세로 비율 전용 만화 뷰어. 스크롤 없이 **아래로 드래그하면 책장이 넘어가는 3D 플립**으로 다음 컷을 본다.
-GitHub Pages 정적 배포를 전제로 하며, 빌드 단계·프레임워크·외부 의존성이 없는 순수 HTML/CSS/JS 단일 페이지다.
+GitHub Pages 정적 배포를 전제로 하며, React 19 + Vite 7 + TypeScript로 구현하고 플립 연출은 motion(motion/react)으로 처리한다.
 
 ## 1. 목표 UX
 
@@ -63,19 +63,20 @@ GitHub Pages 정적 배포를 전제로 하며, 빌드 단계·프레임워크·
 
 | 항목 | 결정 | 이유 |
 | ------ | ------ | ------ |
-| 스택 | 순수 HTML/CSS/JS (index.html + style.css + app.js) | 빌드 0, 의존성 0, Pages 배포가 가장 단순 |
-| 상태 | 단일 `index` 변수 + DOM 슬롯 2개(base/flip) | 22페이지 고정 순서라 복잡한 상태 관리 불필요 |
+| 스택 | React 19 + Vite 7 + TypeScript (`src/App.tsx`) | 컴포넌트 구조 + 타입 안정성, Pages용 정적 빌드 |
+| 애니메이션 | motion (motion/react) | 드래그 진행률 모션 값 → rotateX 변환, 스프링 물리 내장 |
+| 상태 | `index` + `phase`(idle/forward/backward) 상태 2개 + 모션 값 | 22페이지 고정 순서라 복잡한 상태 관리 불필요 |
 | 에셋 | 원본 그대로 복사 (압축·리사이즈 없음) | 공모전 원본 품질 유지 |
 | 경로 | 전부 상대 경로 | Pages 프로젝트 사이트 서브경로(`/repo-name/`) 호환 |
 | 접근성 | `prefers-reduced-motion` 시 전환 시간 최소화, 버튼 라벨 | 기본 접근성 유지 |
 
 ## 7. 배포 계획
 
-1. `.github/workflows/deploy.yml` — push 시 정적 파일을 GitHub Pages에 배포 (actions/upload-pages-artifact + deploy-pages).
+1. `.github/workflows/deploy.yml` — push 시 `npm ci && npm run build` 후 빌드 산출물(`dist/`)을 GitHub Pages에 배포 (setup-node + actions/upload-pages-artifact + deploy-pages, 전 action SHA 고정).
 2. 사용자는 저장소 생성·푸시 후, 저장소 Settings → Pages → Source를 **GitHub Actions**로 지정하면 라이브 반영된다 (README에 절차 명시).
 
 ## 8. 범위 외 (Out of Scope)
 
 - 스크롤 기반 뷰어, 가로 모드, 줌/확대, 목차·썸네일, 여러 작품 지원.
-- 이미지 재압축·최적화, 백엔드·빌드 파이프라인, PWA.
+- 이미지 재압축·최적화, 백엔드, PWA.
 - 실제 GitHub 푸시/Pages 활성화 (사용자가 직접 수행).
