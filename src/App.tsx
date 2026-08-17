@@ -86,10 +86,11 @@ export default function App() {
 	const animatingRef = useRef(false);
 	const reduceMotion = useReducedMotion();
 
-	// 드래그 진행률 0~1 → 플립 각도·그림자 (우→좌 책장 넘김: 왼쪽 책등 축 회전)
+	// 드래그 진행률 0~1 → 플립 각도·그림자 (대각선 플립: 우측 하단이 떠올라 좌측 상단으로 접힘)
 	const p = useMotionValue(0);
-	const rotFwd = useTransform(p, [0, 1], [0, -180]);
-	const rotBwd = useTransform(p, [0, 1], [-180, 0]);
+	// 축 (1, -1.777, 0) = 우하단→좌상단 대각선에 수직 (스테이지 비율 941:1672 반영)
+	const flipFwd = useTransform(p, (v) => `rotate3d(1, -1.777, 0, ${v * 180}deg)`);
+	const flipBwd = useTransform(p, (v) => `rotate3d(1, -1.777, 0, ${(1 - v) * 180}deg)`);
 	const shadeFwd = useTransform(p, [0, 1], [0, 0.6]);
 	const shadeBwd = useTransform(p, [0, 1], [0.6, 0]);
 
@@ -249,8 +250,7 @@ export default function App() {
 				<motion.div
 					className="slot flip"
 					style={{
-						rotateY: phase === "forward" ? rotFwd : rotBwd,
-						transformOrigin: "left",
+						transform: phase === "forward" ? flipFwd : flipBwd,
 						backfaceVisibility: "hidden",
 					}}
 				>
