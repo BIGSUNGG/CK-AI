@@ -1,6 +1,11 @@
 export type PageDef =
 	| { type: "image"; src: string }
-	| { type: "video"; src: string };
+	| {
+			type: "video";
+			src: string;
+			/** 소스 영상 상하에 구워진 검은 레터박스 비율(높이 대비) — 세로 맞춤 시 잘라낸다 */
+			trim?: number;
+	  };
 
 const img = (n: number): PageDef => ({
 	type: "image",
@@ -9,7 +14,8 @@ const img = (n: number): PageDef => ({
 
 /** 22페이지: 오프닝 영상 → 0~3컷 → 중간 영상(3-1) → 4~19컷 */
 export const PAGES: PageDef[] = [
-	{ type: "video", src: "assets/opening.mp4" },
+	// ponytail: 원본 720×1280 프레임에 720×1080 장면이 상하 100px 검은 밴드로 구워져 있음 — 에셋 고정이라 상수로 보정
+	{ type: "video", src: "assets/opening.mp4", trim: 0.078125 },
 	img(0),
 	img(1),
 	img(2),

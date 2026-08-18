@@ -101,11 +101,14 @@ body {
 
 .page-media {
 	position: absolute;
-	inset: 0;
-	width: 100%;
+	top: 0;
+	bottom: 0;
+	left: 50%;
+	transform: translateX(-50%);
 	height: 100%;
-	object-fit: contain;
-	background: var(--paper); /* 영상 레터박스도 종이색 */
+	width: auto; /* 세로(높이) 기준 맞춤, 가로 넘침은 중앙 크롭 */
+	max-width: none;
+	background: var(--paper);
 	pointer-events: none; /* 드래그는 스테이지가 처리 */
 }
 

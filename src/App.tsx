@@ -53,6 +53,16 @@ function PageView({
 						src={def.src}
 						playsInline
 						preload="auto"
+						style={
+							def.trim
+								? {
+										height: `${100 / (1 - 2 * def.trim)}%`,
+										top: "50%",
+										left: "50%",
+										transform: "translate(-50%, -50%)",
+									}
+								: undefined
+						}
 					/>
 					<button
 						type="button"
@@ -150,7 +160,14 @@ export default function App() {
 		} else {
 			const v = videoEls.current.get(flipIndex);
 			if (v && v.videoWidth > 0)
-				src = { el: v, sw: v.videoWidth, sh: v.videoHeight };
+				src = {
+					el: v,
+					sw: v.videoWidth,
+					sh: v.videoHeight,
+					crop: def.trim
+						? [def.trim * v.videoHeight, (1 - def.trim) * v.videoHeight]
+						: undefined,
+				};
 		}
 		drawCurl(ctx, W, H, ph === "backward" ? 1 - progress : progress, src);
 	};

@@ -37,16 +37,20 @@ for (let i = 0; i <= 10; i++) {
 	assert.ok(thetaMax <= Math.PI * 2 + 1e-9, `thetaMax cap (q=${i / 10})`);
 }
 
-// contain 박스: 소스 비율이 스테이지보다 넓으면 좌우 레터박스
+// 세로 맞춤 박스: 높이는 항상 스테이지 가득, 넓은 소스는 가로 넘침(중앙 크롭)
 const b = contentBox(1600, 900, 660, 1172);
-assert.ok(Math.abs(b.w - 660) < 1e-9, "contain 너비");
-assert.ok(b.h < 1172 && b.y0 > 0, "contain 세로 레터박스");
-// 소스 비율이 스테이지와 같으면 가득 참
+assert.ok(Math.abs(b.h - 1172) < 1e-9 && b.y0 === 0, "세로 가득");
+assert.ok(b.w > 660 && b.x0 < 0, "넓은 소스 가로 크롭");
+// 소스 비율이 스테이지와 같으면 정확히 가득
 const b2 = contentBox(941, 1672, 941, 1672);
 assert.ok(
 	Math.abs(b2.w - 941) < 1e-9 && Math.abs(b2.h - 1672) < 1e-9,
-	"contain 가득",
+	"동비율 가득",
 );
+// 세로 크롭(구운 레터박스 절단): 720×1280에서 상하 100 잘라내면 2:3 장면이 세로 가득
+const b3 = contentBox(720, 1280, 660, 1172, [100, 1180]);
+assert.ok(Math.abs(b3.h - 1172) < 1e-9, "크롭 세로 가득");
+assert.ok(Math.abs(b3.w - 1172 * (720 / 1080)) < 1e-6, "크롭 비율");
 
 // OVERSHOOT 상수 점검 (q=1 퇴장 여유의 전제)
 assert.ok(OVERSHOOT > 0.1, "OVERSHOOT ≥ 0.1이어야 q=1에서 롤이 화면 밖");

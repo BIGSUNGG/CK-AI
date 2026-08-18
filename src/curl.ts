@@ -46,21 +46,17 @@ export interface ContentBox {
 	h: number;
 }
 
-/** 소스(이미지/영상 고유 크기) → 스테이지 contain 박스 (object-fit: contain과 동일) */
+/** 소스(이미지/영상 고유 크기) → 스테이지 세로 맞춤 박스 (.page-media와 동일: 높이 기준, 가로 넘침 중앙 크롭) */
 export function contentBox(
 	sw: number,
 	sh: number,
 	W: number,
 	H: number,
+	crop?: [number, number],
 ): ContentBox {
-	const ar = sw / sh;
-	let w = W;
-	let h = W / ar;
-	if (h > H) {
-		h = H;
-		w = H * ar;
-	}
-	return { x0: (W - w) / 2, y0: (H - h) / 2, w, h };
+	const ch = crop ? crop[1] - crop[0] : sh;
+	const ar = sw / ch;
+	return { x0: (W - H * ar) / 2, y0: 0, w: H * ar, h: H };
 }
 
 export interface CurlSource {
@@ -68,6 +64,8 @@ export interface CurlSource {
 	/** 소스 고유 크기 (naturalWidth / videoWidth) */
 	sw: number;
 	sh: number;
+	/** 세로 크롭 범위(소스 픽셀) — 구운 레터박스 절단용 */
+	crop?: [number, number];
 }
 
 /**
@@ -92,6 +90,8 @@ function drawStrip(
 		ctx.fillRect(dx, 0, dw, H);
 	}
 	if (!src || !box) return;
+	const sy0 = src.crop ? src.crop[0] : 0;
+	const syh = (src.crop ? src.crop[1] : src.sh) - sy0;
 	const s0 = Math.max(a, box.x0);
 	const s1 = Math.min(b, box.x0 + box.w);
 	if (s1 <= s0) return;
@@ -105,10 +105,10 @@ function drawStrip(
 	if (flip) {
 		ctx.save();
 		ctx.scale(-1, 1);
-		ctx.drawImage(src.el, sx, 0, sw, src.sh, -(dxa + dwa), box.y0, dwa, box.h);
+		ctx.drawImage(src.el, sx, sy0, sw, syh, -(dxa + dwa), box.y0, dwa, box.h);
 		ctx.restore();
 	} else {
-		ctx.drawImage(src.el, sx, 0, sw, src.sh, dxa, box.y0, dwa, box.h);
+		ctx.drawImage(src.el, sx, sy0, sw, syh, dxa, box.y0, dwa, box.h);
 	}
 }
 
@@ -149,7 +149,9 @@ export function drawCurl(
 	const qc = Math.min(Math.max(q, 0), 1);
 	const { xc, r, thetaMax } = curlGeom(W, q);
 	const box =
-		src && src.sw > 0 && src.sh > 0 ? contentBox(src.sw, src.sh, W, H) : null;
+		src && src.sw > 0 && src.sh > 0
+			? contentBox(src.sw, src.sh, W, H, src.crop)
+			: null;
 	ctx.clearRect(0, 0, W, H);
 
 	// 1) 롤이 아래 페이지·평평한 남은 부분에 드리우는 그림자
