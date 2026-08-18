@@ -49,10 +49,67 @@ body,
 	z-index: 1;
 }
 
-/* 플립 레이어: 위쪽 가장자리를 축으로 회전하는 책장 */
-.flip {
+/* ---------- 코너 필 (종이 넘김) 레이어 ---------- */
+
+/* 아직 평평하게 남은 페이지 부분 */
+.peel-flat {
+	position: absolute;
+	inset: 0;
 	z-index: 2;
+	pointer-events: none;
+	will-change: clip-path;
+}
+
+/* 들어 올린 종이 그림자 */
+.peel-shadow {
+	position: absolute;
+	inset: 0;
+	z-index: 3;
+	pointer-events: none;
+	opacity: 0;
+	will-change: clip-path, background, opacity;
+}
+
+/* 접혀 넘어간 코너: wrap이 반사 변환, inner가 클리핑 */
+.peel-flap-wrap {
+	position: absolute;
+	inset: 0;
+	z-index: 4;
+	pointer-events: none;
 	will-change: transform;
+	filter: drop-shadow(-6px 8px 14px rgba(0, 0, 0, 0.3));
+}
+
+.peel-flap {
+	position: absolute;
+	inset: 0;
+}
+
+.flap-shade {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
+/* 접힘선 하이라이트 */
+.crease {
+	position: absolute;
+	top: 0;
+	left: 0;
+	z-index: 5;
+	height: 2px;
+	width: 0;
+	opacity: 0;
+	pointer-events: none;
+	transform-origin: 0 0;
+	background: linear-gradient(
+		90deg,
+		transparent,
+		rgba(255, 255, 255, 0.35) 18%,
+		rgba(255, 255, 255, 0.35) 82%,
+		transparent
+	);
+	will-change: transform, width, opacity;
 }
 
 .page {
@@ -68,15 +125,6 @@ body,
 	height: 100%;
 	object-fit: contain;
 	pointer-events: none; /* 드래그는 스테이지가 처리 */
-}
-
-.shade {
-	position: absolute;
-	inset: 0;
-	z-index: 3;
-	background: #000;
-	opacity: 0;
-	pointer-events: none;
 }
 
 .mute-btn {
@@ -102,7 +150,7 @@ body,
 	right: 0;
 	height: 3px;
 	background: rgba(255, 255, 255, 0.15);
-	z-index: 5;
+	z-index: 6;
 	pointer-events: none;
 }
 
@@ -119,7 +167,7 @@ body,
 	left: 0;
 	right: 0;
 	text-align: center;
-	z-index: 5;
+	z-index: 6;
 	pointer-events: none;
 	color: rgba(255, 255, 255, 0.9);
 	font-size: 13px;
@@ -133,7 +181,7 @@ body,
 	left: 50%;
 	bottom: 8%;
 	transform: translateX(-50%);
-	z-index: 6;
+	z-index: 7;
 	padding: 13px 30px;
 	border: none;
 	border-radius: 999px;

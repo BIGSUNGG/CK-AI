@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import {
 	animate,
-	motion,
 	useMotionValue,
+	useMotionValueEvent,
 	useReducedMotion,
-	useTransform,
 } from "motion/react";
 import { LAST_PAGE, PAGES, type PageDef } from "./pages";
+import { peelGeometry } from "./peel";
 
 /* ---------- 단일 페이지 렌더 ---------- */
 
@@ -77,22 +77,92 @@ interface PointerState {
 	started: boolean;
 }
 
+/** 접힘선이 대각선 끝을 완전히 지나가도록 하는 여유분 */
+const OVERSHOOT = 1.06;
+/** 대기 상태의 코너 컬 크기 (대각선 길이 대비 비율) */
+const IDLE_T = 0.07;
+
 export default function App() {
 	const [index, setIndex] = useState(0);
 	const [phase, setPhase] = useState<Phase>("idle");
+	const phaseRef = useRef<Phase>("idle");
 	const stageRef = useRef<HTMLDivElement>(null);
+	const flatRef = useRef<HTMLDivElement>(null);
+	const flapWrapRef = useRef<HTMLDivElement>(null);
+	const flapRef = useRef<HTMLDivElement>(null);
+	const flapShadeRef = useRef<HTMLDivElement>(null);
+	const shadowRef = useRef<HTMLDivElement>(null);
+	const creaseRef = useRef<HTMLDivElement>(null);
 	const pointerRef = useRef<PointerState | null>(null);
 	const dirRef = useRef<1 | -1>(1);
 	const animatingRef = useRef(false);
 	const reduceMotion = useReducedMotion();
 
-	// 드래그 진행률 0~1 → 플립 각도·그림자 (대각선 플립: 우측 하단이 떠올라 좌측 상단으로 접힘)
+	const setPhaseBoth = (ph: Phase) => {
+		phaseRef.current = ph;
+		setPhase(ph);
+	};
+
+	// 드래그 진행률 0~1 — 스프링/확정 애니메이션도 이 값을 따라간다
 	const p = useMotionValue(0);
-	// 축 (1, -1.777, 0) = 우하단→좌상단 대각선에 수직 (스테이지 비율 941:1672 반영)
-	const flipFwd = useTransform(p, (v) => `rotate3d(1, -1.777, 0, ${v * 180}deg)`);
-	const flipBwd = useTransform(p, (v) => `rotate3d(1, -1.777, 0, ${(1 - v) * 180}deg)`);
-	const shadeFwd = useTransform(p, [0, 1], [0, 0.6]);
-	const shadeBwd = useTransform(p, [0, 1], [0.6, 0]);
+
+	/** 진행률 → 접힘선 위치(t) → 클리핑·반사·그림자를 매 프레임 DOM에 반영 */
+	const applyPeel = (progress: number) => {
+		const stage = stageRef.current;
+		if (!stage) return;
+		const W = stage.clientWidth;
+		const H = stage.clientHeight;
+		const L = Math.hypot(W, H);
+		const ph = phaseRef.current;
+		const t =
+			ph === "idle"
+				? IDLE_T * L
+				: ph === "forward"
+					? progress * L * OVERSHOOT
+					: (1 - progress) * L * OVERSHOOT;
+		const g = peelGeometry(W, H, t);
+		// 그림자 강도: 시작/끝에서 작고 중반에 큼
+		const strength = Math.sin(Math.PI * Math.min(t / L, 1));
+		// 접힘선에서 코너 쪽으로 내려가는 방향의 CSS 그라디언트 각도
+		// (방향 벡터 (sinθ, −cosθ) = (W/L, H/L) 기준)
+		const gradDeg = (Math.atan2(W / L, -H / L) * 180) / Math.PI;
+		const foldPos = L - t; // 좌상단 모서리 기준 접힘선 위치
+
+		if (flatRef.current) flatRef.current.style.clipPath = g.flatPoly;
+		if (flapRef.current) flapRef.current.style.clipPath = g.cornerPoly;
+		if (flapWrapRef.current) flapWrapRef.current.style.transform = g.matrix;
+		if (flapShadeRef.current) {
+			// 접힌 종이의 휘어짐 음영: 접힘선에서 어둡다가 코너 쪽으로 사라짐
+			flapShadeRef.current.style.background = `linear-gradient(${gradDeg}deg, rgba(0,0,0,0.34) ${foldPos}px, rgba(0,0,0,0.12) ${foldPos + 90}px, rgba(255,255,255,0.06) ${foldPos + 260}px)`;
+		}
+		if (shadowRef.current) {
+			const s = shadowRef.current.style;
+			// 들어 올린 종이가 아래 페이지에 드리우는 그림자 (접힘선 바로 아래)
+			s.clipPath = g.cornerPoly;
+			s.background = `linear-gradient(${gradDeg}deg, rgba(0,0,0,0.42) ${foldPos}px, rgba(0,0,0,0) ${foldPos + 130}px)`;
+			s.opacity = String(0.35 + 0.65 * strength);
+		}
+		if (creaseRef.current) {
+			const c = creaseRef.current.style;
+			const len = Math.hypot(g.foldB[0] - g.foldA[0], g.foldB[1] - g.foldA[1]);
+			if (len < 1) {
+				c.opacity = "0";
+			} else {
+				const ang =
+					(Math.atan2(g.foldB[1] - g.foldA[1], g.foldB[0] - g.foldA[0]) * 180) /
+					Math.PI;
+				c.opacity = String(0.25 + 0.75 * strength);
+				c.width = `${len}px`;
+				c.transform = `translate(${g.foldA[0]}px, ${g.foldA[1]}px) rotate(${ang}deg)`;
+			}
+		}
+	};
+
+	useMotionValueEvent(p, "change", applyPeel);
+	useEffect(() => {
+		applyPeel(p.get());
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [phase, index]);
 
 	const releaseTransition = () =>
 		reduceMotion
@@ -101,7 +171,7 @@ export default function App() {
 
 	const finalize = (commit: boolean) => {
 		if (commit) setIndex((i) => i + dirRef.current);
-		setPhase("idle");
+		setPhaseBoth("idle");
 		animatingRef.current = false;
 		p.set(0);
 	};
@@ -113,7 +183,7 @@ export default function App() {
 		animatingRef.current = true;
 		dirRef.current = dir;
 		p.set(0);
-		setPhase(dir > 0 ? "forward" : "backward");
+		setPhaseBoth(dir > 0 ? "forward" : "backward");
 		return true;
 	};
 
@@ -222,12 +292,8 @@ export default function App() {
 
 	/* ---------- 렌더 ---------- */
 
-	const flipDef =
-		phase === "forward"
-			? PAGES[index]
-			: phase === "backward"
-				? PAGES[index - 1]
-				: null;
+	const peelIndex = phase === "backward" ? index - 1 : index;
+	const peelDef = PAGES[peelIndex];
 	const baseDef = phase === "forward" ? PAGES[index + 1] : PAGES[index];
 	const baseKey = phase === "forward" ? index + 1 : index;
 
@@ -242,29 +308,30 @@ export default function App() {
 			onPointerUp={(e) => endPointer(e, false)}
 			onPointerCancel={(e) => endPointer(e, true)}
 		>
-			<div className="slot base">
+			<div className="slot">
 				<PageView key={baseKey} def={baseDef} active={phase === "idle"} />
 			</div>
 
-			{flipDef && (
-				<motion.div
-					className="slot flip"
-					style={{
-						transform: phase === "forward" ? flipFwd : flipBwd,
-						backfaceVisibility: "hidden",
-					}}
-				>
-					<PageView
-						key={phase === "forward" ? index : index - 1}
-						def={flipDef}
-						active={false}
-					/>
-					<motion.div
-						className="shade"
-						style={{ opacity: phase === "forward" ? shadeFwd : shadeBwd }}
-					/>
-				</motion.div>
+			{/* 아직 평평하게 남아 있는 페이지 부분 (forward 진행 중) */}
+			{phase === "forward" && (
+				<div className="slot peel-flat" ref={flatRef}>
+					<PageView key={`flat-${index}`} def={peelDef} active={false} />
+				</div>
 			)}
+
+			{/* 들어 올린 종이가 아래 페이지에 드리우는 그림자 */}
+			<div className="peel-shadow" ref={shadowRef} />
+
+			{/* 접혀 넘어간 코너 (페이지 뒷면: 반사된 콘텐츠) */}
+			<div className="peel-flap-wrap" ref={flapWrapRef}>
+				<div className="slot peel-flap" ref={flapRef}>
+					<PageView key={`flap-${peelIndex}`} def={peelDef} active={false} />
+					<div className="flap-shade" ref={flapShadeRef} />
+				</div>
+			</div>
+
+			{/* 접힘선 하이라이트 */}
+			<div className="crease" ref={creaseRef} />
 
 			<div className="bar">
 				<div
