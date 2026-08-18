@@ -6,11 +6,19 @@ import {
 	useReducedMotion,
 } from "motion/react";
 import { LAST_PAGE, PAGES, type PageDef } from "./pages";
-import { peelGeometry } from "./peel";
+import { drawCurl, type CurlSource } from "./curl.ts";
 
 /* ---------- 단일 페이지 렌더 ---------- */
 
-function PageView({ def, active }: { def: PageDef; active: boolean }) {
+function PageView({
+	def,
+	active,
+	onVideo,
+}: {
+	def: PageDef;
+	active: boolean;
+	onVideo?: (el: HTMLVideoElement | null) => void;
+}) {
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const [muted, setMuted] = useState(false);
 
@@ -37,7 +45,10 @@ function PageView({ def, active }: { def: PageDef; active: boolean }) {
 			{def.type === "video" ? (
 				<>
 					<video
-						ref={videoRef}
+						ref={(el) => {
+							videoRef.current = el;
+							onVideo?.(el);
+						}}
 						className="page-media"
 						src={def.src}
 						playsInline
@@ -70,32 +81,25 @@ type Phase = "idle" | "forward" | "backward";
 
 interface PointerState {
 	id: number;
-	y0: number;
-	lastY: number;
+	x0: number;
+	lastX: number;
 	lastT: number;
 	vel: number;
 	started: boolean;
 }
-
-/** 접힘선이 대각선 끝을 완전히 지나가도록 하는 여유분 */
-const OVERSHOOT = 1.06;
-/** 대기 상태의 코너 컬 크기 (대각선 길이 대비 비율) */
-const IDLE_T = 0.07;
 
 export default function App() {
 	const [index, setIndex] = useState(0);
 	const [phase, setPhase] = useState<Phase>("idle");
 	const phaseRef = useRef<Phase>("idle");
 	const stageRef = useRef<HTMLDivElement>(null);
-	const flatRef = useRef<HTMLDivElement>(null);
-	const flapWrapRef = useRef<HTMLDivElement>(null);
-	const flapRef = useRef<HTMLDivElement>(null);
-	const flapShadeRef = useRef<HTMLDivElement>(null);
-	const shadowRef = useRef<HTMLDivElement>(null);
-	const creaseRef = useRef<HTMLDivElement>(null);
+	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const pointerRef = useRef<PointerState | null>(null);
 	const dirRef = useRef<1 | -1>(1);
 	const animatingRef = useRef(false);
+	/** 넘기는 페이지의 콘텐츠 소스 (캔버스 drawImage용) */
+	const videoEls = useRef(new Map<number, HTMLVideoElement>());
+	const imgCache = useRef(new Map<string, HTMLImageElement>());
 	const reduceMotion = useReducedMotion();
 
 	const setPhaseBoth = (ph: Phase) => {
@@ -106,61 +110,54 @@ export default function App() {
 	// 드래그 진행률 0~1 — 스프링/확정 애니메이션도 이 값을 따라간다
 	const p = useMotionValue(0);
 
-	/** 진행률 → 접힘선 위치(t) → 클리핑·반사·그림자를 매 프레임 DOM에 반영 */
-	const applyPeel = (progress: number) => {
-		const stage = stageRef.current;
-		if (!stage) return;
-		const W = stage.clientWidth;
-		const H = stage.clientHeight;
-		const L = Math.hypot(W, H);
-		const ph = phaseRef.current;
-		const t =
-			ph === "idle"
-				? IDLE_T * L
-				: ph === "forward"
-					? progress * L * OVERSHOOT
-					: (1 - progress) * L * OVERSHOOT;
-		const g = peelGeometry(W, H, t);
-		// 그림자 강도: 시작/끝에서 작고 중반에 큼
-		const strength = Math.sin(Math.PI * Math.min(t / L, 1));
-		// 접힘선에서 코너 쪽으로 내려가는 방향의 CSS 그라디언트 각도
-		// (방향 벡터 (sinθ, −cosθ) = (W/L, H/L) 기준)
-		const gradDeg = (Math.atan2(W / L, -H / L) * 180) / Math.PI;
-		const foldPos = L - t; // 좌상단 모서리 기준 접힘선 위치
-
-		if (flatRef.current) flatRef.current.style.clipPath = g.flatPoly;
-		if (flapRef.current) flapRef.current.style.clipPath = g.cornerPoly;
-		if (flapWrapRef.current) flapWrapRef.current.style.transform = g.matrix;
-		if (flapShadeRef.current) {
-			// 접힌 종이의 휘어짐 음영: 접힘선에서 어둡다가 코너 쪽으로 사라짐
-			flapShadeRef.current.style.background = `linear-gradient(${gradDeg}deg, rgba(0,0,0,0.34) ${foldPos}px, rgba(0,0,0,0.12) ${foldPos + 90}px, rgba(255,255,255,0.06) ${foldPos + 260}px)`;
+	const ensureImage = (src: string): HTMLImageElement => {
+		let im = imgCache.current.get(src);
+		if (!im) {
+			im = new Image();
+			im.src = src;
+			imgCache.current.set(src, im);
 		}
-		if (shadowRef.current) {
-			const s = shadowRef.current.style;
-			// 들어 올린 종이가 아래 페이지에 드리우는 그림자 (접힘선 바로 아래)
-			s.clipPath = g.cornerPoly;
-			s.background = `linear-gradient(${gradDeg}deg, rgba(0,0,0,0.42) ${foldPos}px, rgba(0,0,0,0) ${foldPos + 130}px)`;
-			s.opacity = String(0.35 + 0.65 * strength);
-		}
-		if (creaseRef.current) {
-			const c = creaseRef.current.style;
-			const len = Math.hypot(g.foldB[0] - g.foldA[0], g.foldB[1] - g.foldA[1]);
-			if (len < 1) {
-				c.opacity = "0";
-			} else {
-				const ang =
-					(Math.atan2(g.foldB[1] - g.foldA[1], g.foldB[0] - g.foldA[0]) * 180) /
-					Math.PI;
-				c.opacity = String(0.25 + 0.75 * strength);
-				c.width = `${len}px`;
-				c.transform = `translate(${g.foldA[0]}px, ${g.foldA[1]}px) rotate(${ang}deg)`;
-			}
-		}
+		return im;
 	};
 
-	useMotionValueEvent(p, "change", applyPeel);
+	/** 진행률 → 컬 기하 → 매 프레임 캔버스에 렌더 */
+	const applyCurl = (progress: number) => {
+		const stage = stageRef.current;
+		const canvas = canvasRef.current;
+		if (!stage || !canvas || phaseRef.current === "idle") return;
+		const W = stage.clientWidth;
+		const H = stage.clientHeight;
+		const dpr = window.devicePixelRatio || 1;
+		if (
+			canvas.width !== Math.round(W * dpr) ||
+			canvas.height !== Math.round(H * dpr)
+		) {
+			canvas.width = Math.round(W * dpr);
+			canvas.height = Math.round(H * dpr);
+		}
+		const ctx = canvas.getContext("2d");
+		if (!ctx) return;
+		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+		const ph = phaseRef.current;
+		const flipIndex = ph === "backward" ? index - 1 : index;
+		const def = PAGES[flipIndex];
+		let src: CurlSource | null = null;
+		if (def.type === "image") {
+			const im = ensureImage(def.src);
+			if (im.complete && im.naturalWidth > 0)
+				src = { el: im, sw: im.naturalWidth, sh: im.naturalHeight };
+		} else {
+			const v = videoEls.current.get(flipIndex);
+			if (v && v.videoWidth > 0)
+				src = { el: v, sw: v.videoWidth, sh: v.videoHeight };
+		}
+		drawCurl(ctx, W, H, ph === "backward" ? 1 - progress : progress, src);
+	};
+
+	useMotionValueEvent(p, "change", applyCurl);
 	useEffect(() => {
-		applyPeel(p.get());
+		if (phase !== "idle") applyCurl(p.get());
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [phase, index]);
 
@@ -199,15 +196,15 @@ export default function App() {
 		finishFlip(true);
 	};
 
-	/* ---------- 포인터 드래그 ---------- */
+	/* ---------- 포인터 드래그 (좌우) ---------- */
 
 	const onPointerDown = (e: React.PointerEvent) => {
 		if (e.pointerType === "mouse" && e.button !== 0) return;
 		stageRef.current?.setPointerCapture(e.pointerId);
 		pointerRef.current = {
 			id: e.pointerId,
-			y0: e.clientY,
-			lastY: e.clientY,
+			x0: e.clientX,
+			lastX: e.clientX,
 			lastT: performance.now(),
 			vel: 0,
 			started: false,
@@ -217,22 +214,23 @@ export default function App() {
 	const onPointerMove = (e: React.PointerEvent) => {
 		const pt = pointerRef.current;
 		if (!pt || e.pointerId !== pt.id) return;
-		const dy = e.clientY - pt.y0;
+		const dx = e.clientX - pt.x0;
 		const now = performance.now();
-		pt.vel = (e.clientY - pt.lastY) / Math.max(now - pt.lastT, 1);
-		pt.lastY = e.clientY;
+		pt.vel = (e.clientX - pt.lastX) / Math.max(now - pt.lastT, 1);
+		pt.lastX = e.clientX;
 		pt.lastT = now;
 
 		if (!pt.started) {
-			if (Math.abs(dy) < 8) return; // 움직임 감지 임계값(슬롭)
-			if (!beginFlip(dy > 0 ? 1 : -1)) {
+			if (Math.abs(dx) < 8) return; // 움직임 감지 임계값(슬롭)
+			// 좌(−)로 드래그 = 다음 페이지, 우(+)로 드래그 = 이전 페이지
+			if (!beginFlip(dx < 0 ? 1 : -1)) {
 				pointerRef.current = null;
 				return;
 			}
 			pt.started = true;
 		}
-		const h = stageRef.current?.clientHeight ?? 1;
-		p.set(Math.min(Math.max(Math.abs(dy) / (h * 0.5), 0), 1));
+		const w = stageRef.current?.clientWidth ?? 1;
+		p.set(Math.min(Math.max(Math.abs(dx) / (w * 0.5), 0), 1));
 	};
 
 	const endPointer = (e: React.PointerEvent, cancel: boolean) => {
@@ -284,16 +282,17 @@ export default function App() {
 	/* ---------- 이웃 페이지 프리로드 ---------- */
 
 	useEffect(() => {
-		for (const j of [index + 1, index + 2, index - 1]) {
+		for (const j of [index, index + 1, index + 2, index - 1]) {
 			const def = PAGES[j];
-			if (def?.type === "image") new Image().src = def.src;
+			if (def?.type === "image") ensureImage(def.src);
 		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [index]);
 
 	/* ---------- 렌더 ---------- */
 
-	const peelIndex = phase === "backward" ? index - 1 : index;
-	const peelDef = PAGES[peelIndex];
+	const flipIndex = phase === "backward" ? index - 1 : index;
+	const flipDef = PAGES[flipIndex];
 	const baseDef = phase === "forward" ? PAGES[index + 1] : PAGES[index];
 	const baseKey = phase === "forward" ? index + 1 : index;
 
@@ -312,26 +311,24 @@ export default function App() {
 				<PageView key={baseKey} def={baseDef} active={phase === "idle"} />
 			</div>
 
-			{/* 아직 평평하게 남아 있는 페이지 부분 (forward 진행 중) */}
-			{phase === "forward" && (
-				<div className="slot peel-flat" ref={flatRef}>
-					<PageView key={`flat-${index}`} def={peelDef} active={false} />
+			{/* 넘기는 페이지: 넘김 중에는 숨기고 캔버스가 그린다 */}
+			{phase !== "idle" && (
+				<div className="slot flipper-offscreen">
+					<PageView
+						key={`flip-${flipIndex}`}
+						def={flipDef}
+						active={false}
+						onVideo={(el) => {
+							if (el) videoEls.current.set(flipIndex, el);
+							else videoEls.current.delete(flipIndex);
+						}}
+					/>
 				</div>
 			)}
 
-			{/* 들어 올린 종이가 아래 페이지에 드리우는 그림자 */}
-			<div className="peel-shadow" ref={shadowRef} />
+			<canvas className="curl-canvas" ref={canvasRef} aria-hidden="true" />
 
-			{/* 접혀 넘어간 코너 (페이지 뒷면: 반사된 콘텐츠) */}
-			<div className="peel-flap-wrap" ref={flapWrapRef}>
-				<div className="slot peel-flap" ref={flapRef}>
-					<PageView key={`flap-${peelIndex}`} def={peelDef} active={false} />
-					<div className="flap-shade" ref={flapShadeRef} />
-				</div>
-			</div>
-
-			{/* 접힘선 하이라이트 */}
-			<div className="crease" ref={creaseRef} />
+			<div className="gutter" />
 
 			<div className="bar">
 				<div

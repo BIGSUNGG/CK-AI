@@ -1,3 +1,9 @@
+:root {
+	--paper: #f6f1e7; /* src/curl.ts의 PAPER와 동일 */
+	--desk-hi: #37291c;
+	--desk-lo: #150f09;
+}
+
 * {
 	margin: 0;
 	padding: 0;
@@ -8,9 +14,17 @@ html,
 body,
 #root {
 	height: 100%;
-	background: #0b0b0d;
 	overflow: hidden;
 	overscroll-behavior: none;
+}
+
+/* 책상: 따뜻한 어두운 그라데이션 + 비네트 */
+body {
+	background: radial-gradient(
+		120% 100% at 50% 28%,
+		var(--desk-hi),
+		var(--desk-lo)
+	);
 }
 
 #root {
@@ -20,24 +34,44 @@ body,
 	font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-/* 세로 비율 고정 스테이지: 가로로 넓은 화면에서는 중앙 세로 프레임(레터박스) */
+/* ---------- 책 (세로 비율 고정 스테이지) ---------- */
+
 .stage {
 	position: relative;
 	aspect-ratio: 941 / 1672;
 	height: 100vh;
 	height: min(100dvh, calc(100vw * 1672 / 941));
-	background: #000;
-	border-radius: 6px;
+	background: var(--paper);
+	border-radius: 3px 10px 10px 3px; /* 좌측 = 책등 */
 	overflow: hidden;
-	perspective: 1800px;
 	touch-action: none;
 	user-select: none;
 	-webkit-user-select: none;
 	cursor: grab;
+	/* 둥실 뜬 책 그림자 + 우하단에 쌓인 아래 장들 */
+	box-shadow:
+		0 26px 70px rgba(0, 0, 0, 0.6),
+		0 6px 18px rgba(0, 0, 0, 0.45),
+		3px 3px 0 -1px #d9cdb6,
+		6px 6px 0 -2px #c8bba1;
 }
 
 .stage:active {
 	cursor: grabbing;
+}
+
+/* 책등 홈(gutter) 그림자 — 콘텐츠 위에 살짝 얹힌다 */
+.gutter {
+	position: absolute;
+	inset: 0;
+	z-index: 5;
+	pointer-events: none;
+	background: linear-gradient(
+		90deg,
+		rgba(0, 0, 0, 0.34),
+		rgba(0, 0, 0, 0.1) 4.5%,
+		rgba(0, 0, 0, 0) 8.5%
+	);
 }
 
 .slot {
@@ -45,77 +79,24 @@ body,
 	inset: 0;
 }
 
-.base {
-	z-index: 1;
+/* 넘기는 페이지는 캔버스가 대신 그리는 동안 숨김 (영상 프레임 유지를 위해 마운트 유지) */
+.flipper-offscreen {
+	visibility: hidden;
 }
 
-/* ---------- 코너 필 (종이 넘김) 레이어 ---------- */
-
-/* 아직 평평하게 남은 페이지 부분 */
-.peel-flat {
-	position: absolute;
-	inset: 0;
-	z-index: 2;
-	pointer-events: none;
-	will-change: clip-path;
-}
-
-/* 들어 올린 종이 그림자 */
-.peel-shadow {
-	position: absolute;
-	inset: 0;
-	z-index: 3;
-	pointer-events: none;
-	opacity: 0;
-	will-change: clip-path, background, opacity;
-}
-
-/* 접혀 넘어간 코너: wrap이 반사 변환, inner가 클리핑 */
-.peel-flap-wrap {
+.curl-canvas {
 	position: absolute;
 	inset: 0;
 	z-index: 4;
+	width: 100%;
+	height: 100%;
 	pointer-events: none;
-	will-change: transform;
-	filter: drop-shadow(-6px 8px 14px rgba(0, 0, 0, 0.3));
-}
-
-.peel-flap {
-	position: absolute;
-	inset: 0;
-}
-
-.flap-shade {
-	position: absolute;
-	inset: 0;
-	pointer-events: none;
-}
-
-/* 접힘선 하이라이트 */
-.crease {
-	position: absolute;
-	top: 0;
-	left: 0;
-	z-index: 5;
-	height: 2px;
-	width: 0;
-	opacity: 0;
-	pointer-events: none;
-	transform-origin: 0 0;
-	background: linear-gradient(
-		90deg,
-		transparent,
-		rgba(255, 255, 255, 0.35) 18%,
-		rgba(255, 255, 255, 0.35) 82%,
-		transparent
-	);
-	will-change: transform, width, opacity;
 }
 
 .page {
 	position: absolute;
 	inset: 0;
-	background: #000;
+	background: var(--paper);
 }
 
 .page-media {
@@ -124,6 +105,7 @@ body,
 	width: 100%;
 	height: 100%;
 	object-fit: contain;
+	background: var(--paper); /* 영상 레터박스도 종이색 */
 	pointer-events: none; /* 드래그는 스테이지가 처리 */
 }
 
@@ -136,7 +118,7 @@ body,
 	height: 42px;
 	border: none;
 	border-radius: 50%;
-	background: rgba(0, 0, 0, 0.45);
+	background: rgba(43, 32, 20, 0.55);
 	color: #fff;
 	font-size: 18px;
 	cursor: pointer;
@@ -149,7 +131,7 @@ body,
 	left: 0;
 	right: 0;
 	height: 3px;
-	background: rgba(255, 255, 255, 0.15);
+	background: rgba(0, 0, 0, 0.28);
 	z-index: 6;
 	pointer-events: none;
 }
@@ -157,7 +139,7 @@ body,
 .bar-fill {
 	height: 100%;
 	width: 0;
-	background: #fff;
+	background: #caa96a;
 	transition: width 200ms ease;
 }
 
@@ -169,7 +151,7 @@ body,
 	text-align: center;
 	z-index: 6;
 	pointer-events: none;
-	color: rgba(255, 255, 255, 0.9);
+	color: rgba(255, 255, 255, 0.92);
 	font-size: 13px;
 	letter-spacing: 0.06em;
 	font-variant-numeric: tabular-nums;
@@ -185,8 +167,8 @@ body,
 	padding: 13px 30px;
 	border: none;
 	border-radius: 999px;
-	background: rgba(255, 255, 255, 0.92);
-	color: #111;
+	background: var(--paper);
+	color: #3a2c1c;
 	font-size: 16px;
 	font-weight: 600;
 	cursor: pointer;
