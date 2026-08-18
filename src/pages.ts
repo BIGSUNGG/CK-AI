@@ -19,13 +19,15 @@ export const OPENING = {
 	trim: 0.078125,
 } as const;
 
-/** 21페이지: 0~3컷 → 중간 영상(3-1) → 4~19컷 (1페이지=cut-00에서 다음 넘김 시 오프닝 영상이 전환 연출로 재생) */
+/** 중간 영상 — 4→5페이지 전환 연출로만 재생됨 */
+export const INTERLUDE = { src: "assets/interlude.mp4" } as const;
+
+/** 20페이지: 0~3컷 → 4~19컷 (오프닝·인터루드는 각각 1→2·4→5 전환 연출로 재생) */
 export const PAGES: PageDef[] = [
 	img(0),
 	img(1),
 	img(2),
 	img(3),
-	{ type: "video", src: "assets/interlude.mp4" },
 	...Array.from({ length: 16 }, (_, i) => img(4 + i)),
 ];
 

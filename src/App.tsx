@@ -5,11 +5,15 @@ import {
 	useMotionValueEvent,
 	useReducedMotion,
 } from "motion/react";
-import { LAST_PAGE, OPENING, PAGES, type PageDef } from "./pages";
+import { LAST_PAGE, INTERLUDE, OPENING, PAGES, type PageDef } from "./pages";
 import { drawCurl, type CurlSource } from "./curl.ts";
 
-/** 1→2 전환: 오프닝 재생 시작 후 페이드 시작까지 유지 시간(ms) */
+type VideoDef = { src: string; trim?: number };
+type FadeStyle = "paper" | "black";
+
+/** 전환 영상 재생 시작 후 페이드 시작까지 유지 시간(ms) */
 const OPENING_HOLD_MS = 1500;
+const INTERLUDE_HOLD_MS = 2500;
 /** 페이드 아웃·인 각각의 길이(ms) — 아웃 후 인 순서로 총 2×FADE_MS */
 const FADE_MS = 500;
 
@@ -106,14 +110,18 @@ interface PointerState {
 export default function App() {
 	const [index, setIndex] = useState(0);
 	const [phase, setPhase] = useState<Phase>("idle");
-	/** 1↔2 페이지 페이드 전환 상태 */
+	/** 페이드 전환 상태 */
 	const [fade, setFade] = useState<"none" | "out" | "in">("none");
-	/** 1→2 전환 시 오프닝 영상 오버레이 */
-	const [showOpening, setShowOpening] = useState(false);
+	/** 전환 연출 영상 오버레이 (1→2 오프닝, 4→5 인터루드) */
+	const [overlayVideo, setOverlayVideo] = useState<VideoDef | null>(null);
+	/** 페이드 색: 1↔2 종이, 4↔5 검정 */
+	const [fadeStyle, setFadeStyle] = useState<FadeStyle | null>(null);
 	const phaseRef = useRef<Phase>("idle");
-	const busyRef = useRef(false); // 페이드·오프닝 전환 중 입력 차단
+	const busyRef = useRef(false); // 페이드·영상 전환 중 입력 차단
 	const openingArmed = useRef(false);
 	const openingSafety = useRef(0);
+	const videoTargetRef = useRef(1);
+	const videoHoldRef = useRef(OPENING_HOLD_MS);
 	const stageRef = useRef<HTMLDivElement>(null);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const pointerRef = useRef<PointerState | null>(null);
@@ -213,44 +221,63 @@ export default function App() {
 			setFade("in");
 			window.setTimeout(() => {
 				setFade("none");
+				setFadeStyle(null);
 				busyRef.current = false;
 			}, FADE_MS);
 		}, FADE_MS);
 	};
 
-	const onOpeningPlay = () => {
+	const onOverlayPlay = () => {
 		if (openingArmed.current) return;
 		openingArmed.current = true;
 		clearTimeout(openingSafety.current);
+		const target = videoTargetRef.current;
 		window.setTimeout(
-			() => fadeSwap(1, () => setShowOpening(false)),
-			OPENING_HOLD_MS,
+			() => fadeSwap(target, () => setOverlayVideo(null)),
+			videoHoldRef.current,
 		);
 	};
 
-	const startOpening = () => {
+	const startVideo = (
+		video: VideoDef,
+		target: number,
+		style: FadeStyle,
+		holdMs: number,
+	) => {
 		clearTimeout(openingSafety.current);
 		busyRef.current = true;
 		openingArmed.current = false;
-		setShowOpening(true);
+		videoTargetRef.current = target;
+		videoHoldRef.current = holdMs;
+		setFadeStyle(style);
+		setOverlayVideo(video);
 		// 안전망: autoplay가 막혀 onPlay가 안 와도 3초 뒤에는 전환 진행
-		openingSafety.current = window.setTimeout(onOpeningPlay, 3000);
+		openingSafety.current = window.setTimeout(onOverlayPlay, 3000);
 	};
 
-	const fadeBack = () => {
+	const fadeTo = (target: number, style: FadeStyle) => {
 		busyRef.current = true;
-		fadeSwap(0);
+		setFadeStyle(style);
+		fadeSwap(target);
 	};
 
 	const beginFlip = (dir: 1 | -1): boolean => {
 		if (busyRef.current || animatingRef.current) return false;
-		// 1↔2 페이지는 컬 대신 페이드 (정방향은 오프닝 영상 재생 후)
+		// 1↔2·4↔5 페이지는 컬 대신 페이드 (정방향은 전환 영상 재생 후, 4↔5는 검정)
 		if (dir > 0 && index === 0) {
-			startOpening();
+			startVideo(OPENING, 1, "paper", OPENING_HOLD_MS);
 			return false;
 		}
 		if (dir < 0 && index === 1) {
-			fadeBack();
+			fadeTo(0, "paper");
+			return false;
+		}
+		if (dir > 0 && index === 3) {
+			startVideo(INTERLUDE, 4, "black", INTERLUDE_HOLD_MS);
+			return false;
+		}
+		if (dir < 0 && index === 4) {
+			fadeTo(3, "black");
 			return false;
 		}
 		if (dir > 0 && index >= LAST_PAGE) return false;
@@ -388,8 +415,8 @@ export default function App() {
 			onPointerCancel={(e) => endPointer(e, true)}
 		>
 			<div className={`slot${fadeCls}`}>
-				{/* 오프닝 전환 중 바닥을 비움 — 페이드아웃 시 1페이지(처음 화면)가 비치던 문제 방지 */}
-				{!showOpening && (
+				{/* 전환 중 바닥을 비움 — 페이드아웃 시 떠나온 페이지가 비치던 문제 방지 */}
+				{!overlayVideo && (
 					<PageView key={baseKey} def={baseDef} active={phase === "idle"} />
 				)}
 			</div>
@@ -411,26 +438,33 @@ export default function App() {
 
 			<canvas className="curl-canvas" ref={canvasRef} aria-hidden="true" />
 
-			{/* 1→2 전환 연출: 오프닝 영상 오버레이 (무음, 1.5초 후 페이드) */}
-			{showOpening && (
+			{/* 전환 연출: 영상 오버레이 (무음, 1.5초 후 페이드) */}
+			{overlayVideo && (
 				<div className={`slot opening${fadeCls}`}>
 					<video
 						className="page-media"
-						src={OPENING.src}
+						src={overlayVideo.src}
 						autoPlay
 						muted
 						playsInline
 						preload="auto"
-						onPlay={onOpeningPlay}
-						style={{
-							height: `${100 / (1 - 2 * OPENING.trim)}%`,
-							top: "50%",
-							left: "50%",
-							transform: "translate(-50%, -50%)",
-						}}
+						onPlay={onOverlayPlay}
+						style={
+							overlayVideo.trim
+								? {
+										height: `${100 / (1 - 2 * overlayVideo.trim)}%`,
+										top: "50%",
+										left: "50%",
+										transform: "translate(-50%, -50%)",
+									}
+								: undefined
+						}
 					/>
 				</div>
 			)}
+
+			{/* 검정 페이드 커튼 (4↔5) */}
+			{fadeStyle === "black" && <div className={`curtain${fadeCls}`} />}
 
 			<div className="gutter" />
 

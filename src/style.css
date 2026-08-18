@@ -95,6 +95,26 @@ body {
 	z-index: 4;
 }
 
+/* 검정 페이드 커튼 (4↔5) — 아웃 시 덮고 인 시 걷힌다 */
+.curtain {
+	position: absolute;
+	inset: 0;
+	z-index: 4;
+	background: #000;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.curtain.fade-out {
+	opacity: 1;
+	transition: opacity 0.5s ease;
+}
+
+.curtain.fade-in {
+	opacity: 0;
+	transition: opacity 0.5s ease;
+}
+
 /* 넘기는 페이지는 캔버스가 대신 그리는 동안 숨김 (영상 프레임 유지를 위해 마운트 유지) */
 .flipper-offscreen {
 	visibility: hidden;
