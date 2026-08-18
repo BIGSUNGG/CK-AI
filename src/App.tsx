@@ -415,8 +415,9 @@ export default function App() {
 			onPointerCancel={(e) => endPointer(e, true)}
 		>
 			<div className={`slot${fadeCls}`}>
-				{/* 전환 중 바닥을 비움 — 페이드아웃 시 떠나온 페이지가 비치던 문제 방지 */}
-				{!overlayVideo && (
+				{/* 영상 첫 프레임 전까지 현재 페이지 유지(마운트 깜빡임 방지),
+					페이드아웃부터 비움(떠나온 페이지 비치기 방지) */}
+				{(!overlayVideo || fade === "none") && (
 					<PageView key={baseKey} def={baseDef} active={phase === "idle"} />
 				)}
 			</div>
