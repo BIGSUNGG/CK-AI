@@ -5,8 +5,13 @@ import {
 	useMotionValueEvent,
 	useReducedMotion,
 } from "motion/react";
-import { LAST_PAGE, PAGES, type PageDef } from "./pages";
+import { LAST_PAGE, OPENING, PAGES, type PageDef } from "./pages";
 import { drawCurl, type CurlSource } from "./curl.ts";
+
+/** 1→2 전환: 오프닝 재생 시작 후 페이드 시작까지 유지 시간(ms) */
+const OPENING_HOLD_MS = 1500;
+/** 페이드 아웃·인 각각의 길이(ms) — 아웃 후 인 순서로 총 2×FADE_MS */
+const FADE_MS = 500;
 
 /* ---------- 단일 페이지 렌더 ---------- */
 
@@ -101,7 +106,14 @@ interface PointerState {
 export default function App() {
 	const [index, setIndex] = useState(0);
 	const [phase, setPhase] = useState<Phase>("idle");
+	/** 1↔2 페이지 페이드 전환 상태 */
+	const [fade, setFade] = useState<"none" | "out" | "in">("none");
+	/** 1→2 전환 시 오프닝 영상 오버레이 */
+	const [showOpening, setShowOpening] = useState(false);
 	const phaseRef = useRef<Phase>("idle");
+	const busyRef = useRef(false); // 페이드·오프닝 전환 중 입력 차단
+	const openingArmed = useRef(false);
+	const openingSafety = useRef(0);
 	const stageRef = useRef<HTMLDivElement>(null);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const pointerRef = useRef<PointerState | null>(null);
@@ -190,8 +202,57 @@ export default function App() {
 		p.set(0);
 	};
 
+	/* ---------- 1↔2 페이지: 페이드 전환 (컬 대신) ---------- */
+
+	/** 페이드 아웃 → 페이지 교체 → 페이드 인 후 잠금 해제 */
+	const fadeSwap = (target: number, afterOut?: () => void) => {
+		setFade("out");
+		window.setTimeout(() => {
+			afterOut?.();
+			setIndex(target);
+			setFade("in");
+			window.setTimeout(() => {
+				setFade("none");
+				busyRef.current = false;
+			}, FADE_MS);
+		}, FADE_MS);
+	};
+
+	const onOpeningPlay = () => {
+		if (openingArmed.current) return;
+		openingArmed.current = true;
+		clearTimeout(openingSafety.current);
+		window.setTimeout(
+			() => fadeSwap(1, () => setShowOpening(false)),
+			OPENING_HOLD_MS,
+		);
+	};
+
+	const startOpening = () => {
+		clearTimeout(openingSafety.current);
+		busyRef.current = true;
+		openingArmed.current = false;
+		setShowOpening(true);
+		// 안전망: autoplay가 막혀 onPlay가 안 와도 3초 뒤에는 전환 진행
+		openingSafety.current = window.setTimeout(onOpeningPlay, 3000);
+	};
+
+	const fadeBack = () => {
+		busyRef.current = true;
+		fadeSwap(0);
+	};
+
 	const beginFlip = (dir: 1 | -1): boolean => {
-		if (animatingRef.current) return false;
+		if (busyRef.current || animatingRef.current) return false;
+		// 1↔2 페이지는 컬 대신 페이드 (정방향은 오프닝 영상 재생 후)
+		if (dir > 0 && index === 0) {
+			startOpening();
+			return false;
+		}
+		if (dir < 0 && index === 1) {
+			fadeBack();
+			return false;
+		}
 		if (dir > 0 && index >= LAST_PAGE) return false;
 		if (dir < 0 && index <= 0) return false;
 		animatingRef.current = true;
@@ -312,6 +373,8 @@ export default function App() {
 	const flipDef = PAGES[flipIndex];
 	const baseDef = phase === "forward" ? PAGES[index + 1] : PAGES[index];
 	const baseKey = phase === "forward" ? index + 1 : index;
+	const fadeCls =
+		fade === "out" ? " fade-out" : fade === "in" ? " fade-in" : "";
 
 	return (
 		<div
@@ -324,8 +387,11 @@ export default function App() {
 			onPointerUp={(e) => endPointer(e, false)}
 			onPointerCancel={(e) => endPointer(e, true)}
 		>
-			<div className="slot">
-				<PageView key={baseKey} def={baseDef} active={phase === "idle"} />
+			<div className={`slot${fadeCls}`}>
+				{/* 오프닝 전환 중 바닥을 비움 — 페이드아웃 시 1페이지(처음 화면)가 비치던 문제 방지 */}
+				{!showOpening && (
+					<PageView key={baseKey} def={baseDef} active={phase === "idle"} />
+				)}
 			</div>
 
 			{/* 넘기는 페이지: 넘김 중에는 숨기고 캔버스가 그린다 */}
@@ -344,6 +410,27 @@ export default function App() {
 			)}
 
 			<canvas className="curl-canvas" ref={canvasRef} aria-hidden="true" />
+
+			{/* 1→2 전환 연출: 오프닝 영상 오버레이 (무음, 1.5초 후 페이드) */}
+			{showOpening && (
+				<div className={`slot opening${fadeCls}`}>
+					<video
+						className="page-media"
+						src={OPENING.src}
+						autoPlay
+						muted
+						playsInline
+						preload="auto"
+						onPlay={onOpeningPlay}
+						style={{
+							height: `${100 / (1 - 2 * OPENING.trim)}%`,
+							top: "50%",
+							left: "50%",
+							transform: "translate(-50%, -50%)",
+						}}
+					/>
+				</div>
+			)}
 
 			<div className="gutter" />
 

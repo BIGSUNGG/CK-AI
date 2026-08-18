@@ -79,6 +79,22 @@ body {
 	inset: 0;
 }
 
+/* 1↔2 페이지 페이드 전환 (아웃 0.5초 → 인 0.5초) */
+.fade-out {
+	opacity: 0;
+	transition: opacity 0.5s ease;
+}
+
+.fade-in {
+	opacity: 1;
+	transition: opacity 0.5s ease;
+}
+
+/* 오프닝 전환 오버레이 — 컬 캔버스(z:4) 위로 */
+.opening {
+	z-index: 4;
+}
+
 /* 넘기는 페이지는 캔버스가 대신 그리는 동안 숨김 (영상 프레임 유지를 위해 마운트 유지) */
 .flipper-offscreen {
 	visibility: hidden;

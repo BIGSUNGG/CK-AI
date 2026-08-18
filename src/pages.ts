@@ -12,10 +12,15 @@ const img = (n: number): PageDef => ({
 	src: `assets/cut-${String(n).padStart(2, "0")}.png`,
 });
 
-/** 22페이지: 오프닝 영상 → 0~3컷 → 중간 영상(3-1) → 4~19컷 */
+/** 오프닝 영상 — 페이지가 아니라 1→2 전환 연출로만 재생됨 */
+// ponytail: 원본 720×1280 프레임에 720×1080 장면이 상하 100px 검은 밴드로 구워져 있음 — 에셋 고정이라 상수로 보정
+export const OPENING = {
+	src: "assets/opening.mp4",
+	trim: 0.078125,
+} as const;
+
+/** 21페이지: 0~3컷 → 중간 영상(3-1) → 4~19컷 (1페이지=cut-00에서 다음 넘김 시 오프닝 영상이 전환 연출로 재생) */
 export const PAGES: PageDef[] = [
-	// ponytail: 원본 720×1280 프레임에 720×1080 장면이 상하 100px 검은 밴드로 구워져 있음 — 에셋 고정이라 상수로 보정
-	{ type: "video", src: "assets/opening.mp4", trim: 0.078125 },
 	img(0),
 	img(1),
 	img(2),
